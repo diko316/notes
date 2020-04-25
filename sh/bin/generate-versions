@@ -1,0 +1,55 @@
+#!/bin/sh
+
+TOOL_DIR=$(dirname $(realpath -m $0))
+ROOT_DIR=$(dirname ${TOOL_DIR})
+
+INSTALLERS_DIR=${ROOT_DIR}/install
+INDEX_FILE=${INSTALLERS_DIR}/index.json
+
+cd ${INSTALLERS_DIR}
+
+################################################
+# Generates versions: "latest" or "stable"
+# create_version [name] [package]
+################################################
+create_version() {
+  TARGET_KEY=$1
+  TARGET_INSTALLER=$2
+  TARGET_DIR=${INSTALLERS_DIR}/${TARGET_INSTALLER}
+
+  INSTALLER_JSON=$(cat ${INDEX_FILE} | jq -c '.installer')
+  MANIFEST_JSON=$(echo "${INSTALLER_JSON}" | jq -c ".\"${TARGET_INSTALLER}\"")
+
+  [ "${MANIFEST_JSON}" = "null" ] && return 0
+
+  # generate latest version installer
+  TARGET_VERSION_DIR=${TARGET_DIR}/${TARGET_KEY}
+
+  # cleanup directory
+  [ -d "${TARGET_VERSION_DIR}" ] && rm -Rf "${TARGET_VERSION_DIR}"
+
+  while read TARGET_OS; do
+    TARGET_VERSION=$(echo "${MANIFEST_JSON}" | jq -r ".${TARGET_KEY}.\"${TARGET_OS}\"")
+    TARGET_VERSION_INSTALLER=${TARGET_DIR}/${TARGET_VERSION}/${TARGET_OS}.sh
+
+    [ -f "${TARGET_VERSION_INSTALLER}" ] || continue
+
+    mkdir -p ${TARGET_VERSION_DIR}
+
+    # add a copy
+    cp -f ${TARGET_VERSION_INSTALLER} ${TARGET_VERSION_DIR}/
+    
+  done <<LATEST_LIST
+$(echo "${MANIFEST_JSON}" | jq -r ".\"${TARGET_KEY}\" | keys[]")
+LATEST_LIST
+}
+
+while read INSTALLER_NAME; do
+  [ -d "${INSTALLERS_DIR}/${INSTALLER_NAME}" ] || continue
+
+  create_version "latest" "${INSTALLER_NAME}"
+  create_version "stable" "${INSTALLER_NAME}"
+
+done <<LISTINGS
+$(ls -1)
+LISTINGS

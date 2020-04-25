@@ -1,0 +1,60 @@
+{
+  "installer": {
+    "aws-cli": {
+      "latest": {
+        "ubuntu-18": "2.0"
+      },
+      "stable": {
+        "ubuntu-18": "2.0"
+      }
+    },
+    "amazon-ssm-agent": {
+      "latest": {
+        "ubuntu-18": "preferred"
+      },
+      "stable": {
+        "ubuntu-18": "preferred"
+      }
+    },
+    "nginx": {
+      "latest": {
+        "ubuntu-18": "1.18"
+      },
+      "stable": {
+        "ubuntu-18": "1.18"
+      }
+    },
+    "php": {
+      "latest": {
+        "ubuntu-18": "7.3"
+      },
+      "stable": {
+        "ubuntu-18": "7.3"
+      }
+    },
+    "mysql": {
+      "latest": {
+        "ubuntu-18": "5.7"
+      },
+      "stable": {
+        "ubuntu-18": "5.7"
+      }
+    },
+    "nodejs": {
+      "latest": {
+        "ubuntu-18": "10"
+      },
+      "stable": {
+        "ubuntu-18": "10"
+      }
+    },
+    "openssh-sftp-server": {
+      "latest": {
+        "ubuntu-18": "preferred"
+      },
+      "stable": {
+        "ubuntu-18": "preferred"
+      }
+    }
+  }
+}
