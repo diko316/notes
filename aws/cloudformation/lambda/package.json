@@ -1,0 +1,15 @@
+{
+  "name": "test-layer",
+  "version": "0.0.1",
+  "description": "Test layers",
+  "private": true,
+  "scripts": {},
+  "devDependencies": {
+    "aws-sdk": "^2.641.0"
+  },
+  "dependencies": {
+    "lodash": "^4.17.15",
+    "@test-layer/package1": "file:lib/package1",
+    "@test-layer/package2": "file:lib/package2"
+  }
+}

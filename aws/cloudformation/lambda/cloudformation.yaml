@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Test Lambda and Layers
+Parameters:
+  NodeVersion:
+    Type: String
+    Default: "nodejs10.x"
+    Description: Version of NodeJS to use.
+  LambdaRoleName:
+    Type: String
+    Default: "lambda-role"
+    Description: Version of NodeJS to use.
+Resources:
+  IamRoleLambdaExecution:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - PolicyName: !Sub
+            - '${AWS::StackName}-${AWS::Region}-${RoleName}'
+            - { RoleName: !Ref LambdaRoleName }
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:CreateLogGroup
+                Resource:
+                  - !Sub >-
+                    arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}*:*
+              - Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub >-
+                    arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}*:*:*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - ses:SendEmail
+                  - ses:SendRawEmail
+                  - lambda:InvokeFunction
+                  - "sns:*"
+                  - "s3:Get*"
+                  - "s3:Put*"
+                  - "s3:List*"
+                  - "s3:DescribeJob"
+                  - "ssm:Describe*"
+                  - "ssm:Get*"
+                  - "ssm:List*"
+                  - "ssm:Send*"
+                Resource: "*"
+      Path: "/"
+      RoleName: !Sub
+        - '${AWS::StackName}-${AWS::Region}-${RoleName}'
+        - { RoleName: !Ref LambdaRoleName }
+
+  # test layer
+  HelloWorldLayerVersion:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: HelloWorldLayer
+      CompatibleRuntimes:
+        - !Ref NodeVersion
+      Content: dist/layer
+      Description: "Hello World Layer"
+
+  # hello-world test lambda
+  HelloWorldLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub >-
+        /aws/lambda/${AWS::StackName}-hello-world
+
+  HelloWorldLambdaFunction:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - IamRoleLambdaExecution
+      - HelloWorldLambdaLogGroup
+      - HelloWorldLayerVersion
+    Properties:
+      Code: dist/lambda/hello-world
+      FunctionName: !Sub "${AWS::StackName}-hello-world"
+      Handler: "index.handler"
+      MemorySize: 128
+      Role: !GetAtt IamRoleLambdaExecution.Arn
+      Layers:
+        - !Ref HelloWorldLayerVersion
+      Runtime: !Ref NodeVersion
+      Timeout: 6

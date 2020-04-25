@@ -1,0 +1,102 @@
+#!/bin/sh -e
+
+. $(dirname $(realpath -m $0))/.initialize
+
+######################################
+# Initialize build
+######################################
+populate_dist() {
+  mkdir -p ${DIST_DIR}
+  rm -Rf ${DIST_DIR}/*
+
+  touch ${BUILD_LOG}
+
+  return 0
+}
+
+######################################
+# BUILD layer to /dist
+######################################
+build_layer() {
+  SOURCE_DIR=${ROOT_DIR}/lib
+  DESTINATION_DIR=${DIST_DIR}/layer/nodejs
+  LAYER_PACKAGE_MANIFEST=${DESTINATION_DIR}/package.json
+  LAYER_PACKAGE_MANIFEST_CACHE=${LAYER_PACKAGE_MANIFEST}-cache
+  LAYER_ORG=${STACK_NAME}
+  WORKING_DIR=$(pwd)
+
+  # copy package to dist
+  mkdir -p ${DESTINATION_DIR}
+  cp -f ${MAIN_PACKAGE} ${DESTINATION_DIR}/
+
+  # include package lock if it exist
+  [ -f "${MAIN_PACKAGE_LOCK}" ] && \
+    cp -f ${MAIN_PACKAGE_LOCK} ${DESTINATION_DIR}/
+
+
+  # install main npm packages
+  cd ${DESTINATION_DIR}
+
+  # install layers
+  while read PACKAGE_NAME; do
+    PACKAGE_SOURCE_PATH=${SOURCE_DIR}/${PACKAGE_NAME}
+    PACKAGE_TARGET_PATH=${DESTINATION_DIR}/${PACKAGE_NAME}
+    PACKAGE_FULL_NAME="@${STACK_NAME}/${PACKAGE_NAME}"
+    PACKAGE_SOURCE_URL="file:${PACKAGE_NAME}"
+
+    # validate
+    [ -f ${PACKAGE_SOURCE_PATH}/package.json ] || continue
+
+    mkdir -p ${PACKAGE_TARGET_PATH}
+
+    # copy sources
+    cp -Rf ${PACKAGE_SOURCE_PATH} ${DESTINATION_DIR}/
+
+    # update package target
+    cat ${LAYER_PACKAGE_MANIFEST} | \
+      jq ".dependencies.\"${PACKAGE_FULL_NAME}\" = \"${PACKAGE_SOURCE_URL}\"" > ${LAYER_PACKAGE_MANIFEST_CACHE}
+    mv -f ${LAYER_PACKAGE_MANIFEST_CACHE} ${LAYER_PACKAGE_MANIFEST}
+
+  done <<PACKAGE_LIST
+$(ls -1 ${SOURCE_DIR})
+PACKAGE_LIST
+
+  # install layer modules
+  npm install -y --production
+
+  return 0
+}
+
+######################################
+# BUILD lambda functions
+######################################
+build_lambda() {
+  SOURCE_DIR=${ROOT_DIR}/handler
+  DESTINATION_DIR=${DIST_DIR}/lambda
+  mkdir -p ${DESTINATION_DIR}
+
+  while read PACKAGE_NAME; do
+    cp -Rf ${SOURCE_DIR}/${PACKAGE_NAME} ${DESTINATION_DIR}/
+  done <<PACKAGE_LIST
+$(ls -1 ${SOURCE_DIR})
+PACKAGE_LIST
+
+  
+  return 0
+}
+
+######################################
+# Run build steps
+######################################
+
+# 1. rebuild layers
+${TOOL_DIR}/rebuild
+
+# 2. initialize dist directory
+populate_dist
+
+# 3. build layer for deployment
+build_layer
+
+# 4. build lambda for deployment
+build_lambda
