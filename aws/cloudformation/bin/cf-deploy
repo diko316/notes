@@ -1,0 +1,58 @@
+#!/bin/sh -e
+
+export AWS_PROFILE=diko
+
+# include
+. $(dirname $(realpath -m $0))/.cf-include
+
+OUTPUT_DIRECTORY=${WORKING_DIR}/dist
+DEPLOY_LOG_FILE=${OUTPUT_DIRECTORY}/build.log
+DEPLOYMENT_MANIFEST=${OUTPUT_DIRECTORY}/deployment.json
+OUTPUT_TEMPLATE=${OUTPUT_DIRECTORY}/cloudformation.yaml
+SHOULD_BUILD=0
+
+mkdir -p ${OUTPUT_DIRECTORY}
+touch ${DEPLOY_LOG_FILE}
+set_log_file ${DEPLOY_LOG_FILE}
+
+report_topic "Deploying Cloudformation Stack: $(get_stack_name)"
+
+# build if not yet built
+if [ ! -f ${DEPLOYMENT_MANIFEST} ] || [ ! -f ${OUTPUT_TEMPLATE} ]; then
+  SHOULD_BUILD=1
+fi
+
+# build layers
+if [ ${SHOULD_BUILD} -eq 1 ]; then
+  report_step "Build Layers"
+  build_layers ${OUTPUT_DIRECTORY}
+else
+  report_step "Skipped Build Layers"
+fi
+
+if [ ${SHOULD_BUILD} -eq 1 ]; then
+  report_step "Build Lambda"
+  build_lambda ${OUTPUT_DIRECTORY}
+else
+  report_step "Skipped Build Lambda"
+fi
+
+if [ ${SHOULD_BUILD} -eq 1 ]; then
+  report_step "Build Package"
+  build_package ${OUTPUT_DIRECTORY}
+else
+  report_step "Skipped Package"
+fi
+
+# deploy
+if [ -f ${DEPLOYMENT_MANIFEST} ] && [ -f ${OUTPUT_TEMPLATE} ]; then
+  if [ ${SHOULD_BUILD} -eq 1 ]; then
+    report_step "Deploy Stack"
+  else
+    report_step "Redeploy Stack"
+  fi
+
+  deploy_build ${OUTPUT_DIRECTORY}
+else
+  report_step "Skipped deployment"
+fi

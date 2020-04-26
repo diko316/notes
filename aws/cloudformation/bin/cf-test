@@ -1,0 +1,19 @@
+#!/bin/sh -e
+
+export AWS_PROFILE=diko
+
+# include
+. $(dirname $(realpath -m $0))/.cf-include
+
+test_output() {
+  local OUTPUT
+
+  while read OUTPUT; do
+    echo "line: ${OUTPUT}"
+  done <&0
+}
+
+cat <<TEST | test_output
+test1
+test2
+TEST
