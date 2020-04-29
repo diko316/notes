@@ -1,0 +1,105 @@
+#!/bin/sh
+
+###############################################
+# Cloudformation build functions
+###############################################
+
+#----------------------------------------------
+# inspect_output_directory [output directory]
+#----------------------------------------------
+inspect_output_directory() {
+  [ "[${1}]" = "[]" ] && return 1
+  [ -d "${1}" ] || return 2
+  return 0
+}
+
+#----------------------------------------------
+# get_stack_name
+#----------------------------------------------
+get_stack_name() {
+  basename ${WORKING_DIR}
+  return 0
+}
+
+#----------------------------------------------
+# build_package [output directory]
+#----------------------------------------------
+build_package() {
+  ! inspect_output_directory $1 && \
+    report_error 0 "Output directory not acessible: $1" && \
+    return 1
+
+  local OUTPUT_DIR=$1
+  local OUTPUT_TEMPLATE_FILE=${OUTPUT_DIR}/cloudformation.yaml
+  local STACK_NAME=$(get_stack_name)
+  local BUCKET_NAME=cf-deploy-${STACK_NAME}
+  local BUCKET_PREFIX=$(date +%Y-%m-%d)
+  local DEPLOYMENT_JSON_FILE=${OUTPUT_DIR}/deployment.json
+
+  # create bucket if do not exist
+  if ! create_bucket_if ${BUCKET_NAME}; then
+    report_error 0 "Unable to create ${BUCKET}"
+    return 1
+  fi
+
+  # package stack
+  report_log "Creating package"
+  if ! aws cloudformation package \
+        --template-file ${CF_TEMPLATE_FILE} \
+        --s3-bucket ${BUCKET_NAME} \
+        --s3-prefix ${BUCKET_PREFIX} \
+        --output-template-file ${OUTPUT_TEMPLATE_FILE} 2>&1 | report_output; then
+    report_error 0 "There were errors packaging your cloudformation template"
+    return 1
+  fi
+
+  # generate deployment manifest
+  cat <<DEPLOYMENT_JSON > ${DEPLOYMENT_JSON_FILE}
+{
+  "name": "${STACK_NAME}",
+  "template": "${OUTPUT_TEMPLATE_FILE}",
+  "capabilities": "CAPABILITY_NAMED_IAM",
+  "bucket": "${BUCKET_NAME}",
+  "bucketPrefix": "${BUCKET_PREFIX}"
+}
+DEPLOYMENT_JSON
+
+  return 0
+}
+
+#----------------------------------------------
+# deploy_build [output directory]
+#----------------------------------------------
+deploy_build() {
+  ! inspect_output_directory $1 && \
+    report_error 0 "Output directory not acessible: $1" && \
+    return 1
+
+  local OUTPUT_DIR=$1
+  local DEPLOYMENT_JSON_FILE=${OUTPUT_DIR}/deployment.json
+
+  # must not deploy unless deployment manifest is present
+  if [ ! -f ${DEPLOYMENT_JSON_FILE} ]; then
+    report_error 0 "Unable to deploy packaged stack $(get_stack_name)"
+    return 1
+  fi
+
+  local STACK_NAME=$(cat ${DEPLOYMENT_JSON_FILE} | jq -r ".name")
+  local TEMPLATE_FILE=$(cat ${DEPLOYMENT_JSON_FILE} | jq -r ".template")
+
+  # must not deploy unless deployment manifest is present
+  if [ ! -f ${TEMPLATE_FILE} ]; then
+    report_error 0 "Unable to find template file for stack ${STACK_NAME}."
+    return 1
+  fi
+
+  if ! aws cloudformation deploy \
+          --stack-name ${STACK_NAME} \
+          --template-file ${TEMPLATE_FILE} \
+          --capabilities $(cat ${DEPLOYMENT_JSON_FILE} | jq -r ".capabilities") \
+          --s3-bucket $(cat ${DEPLOYMENT_JSON_FILE} | jq -r ".bucket") \
+          --s3-prefix $(cat ${DEPLOYMENT_JSON_FILE} | jq -r ".bucketPrefix") \
+          --output json 2>&1 | report_output; then
+    report_error 0 "Deployment failed. Please run redeploy command again ${REDEPLOY_COMMAND}"
+  fi
+}

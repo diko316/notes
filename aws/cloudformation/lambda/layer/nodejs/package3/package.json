@@ -1,0 +1,8 @@
+{
+  "name": "@test-layer/package3",
+  "version": "0.0.1",
+  "description": "Layer package: package3",
+  "main": "index.js",
+  "private": true,
+  "license": "ISC"
+}

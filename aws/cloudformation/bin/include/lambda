@@ -1,0 +1,18 @@
+#!/bin/sh -e
+
+#----------------------------------------------
+# build_layers [working directory]
+#----------------------------------------------
+build_layers() {
+  local CURRENT_CWD=$1
+
+  [ "[${CURRENT_CWD}]" = "[]" ] && \
+    report_error 1 "Requires current [working directory] parameter."
+
+  # build node layers
+  if [ -f ${CURRENT_CWD}/package.json ]; then
+    node_build_layers ${CURRENT_CWD}
+  fi
+
+  return 0
+}

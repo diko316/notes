@@ -3,11 +3,12 @@
 export AWS_PROFILE=diko
 
 # include
-. $(dirname $(realpath -m $0))/.cf-include
+. $(dirname $(realpath -m $0))/include/main
+
+WORKING_DIR=$(pwd)
 
 OUTPUT_DIRECTORY=${WORKING_DIR}/dist
 DEPLOYMENT_MANIFEST=${OUTPUT_DIRECTORY}/deployment.json
-OUTPUT_TEMPLATE=${OUTPUT_DIRECTORY}/cloudformation.yaml
 UPDATE_LOG_FILE=${OUTPUT_DIRECTORY}/build.log
 
 mkdir -p ${OUTPUT_DIRECTORY}
@@ -18,17 +19,19 @@ report_topic "Rebuilding Cloudformation Stack Package: $(get_stack_name)"
 
 # build layers
 report_step "Build Lambda Layer."
-build_layers ${OUTPUT_DIRECTORY}
-
-# build layers
-report_step "Build Lambda."
-build_lambda ${OUTPUT_DIRECTORY}
+build_layers ${WORKING_DIR}
 
 # remove if it exist, then remove
-if [ -f ${DEPLOYMENT_MANIFEST} ]; then
-  report_step "Remove last cloudformation template file."
-  rm -f ${DEPLOYMENT_MANIFEST}
-  rm -f ${OUTPUT_TEMPLATE}
-else
-  report_step "Skipped removing non-existent cloudformation template file."
-fi
+# if [ -f ${DEPLOYMENT_MANIFEST} ]; then
+#   report_step "Remove last cloudformation template file."
+#   rm -f ${DEPLOYMENT_MANIFEST}
+#   rm -f ${OUTPUT_TEMPLATE}
+# else
+#   report_step "Skipped removing non-existent cloudformation template file."
+# fi
+
+# # install layers
+# report_step "Install layers."
+# cd ${WORKING_DIR}
+# rm -Rf node_modules | report_output
+# npm install -y | report_output

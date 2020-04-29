@@ -1,0 +1,124 @@
+#!/bin/sh -e
+
+###############################################
+# Locl Variables
+###############################################
+BUILD_STEP=1
+LOG_FILE=
+
+###############################################
+# Reporting functions
+###############################################
+
+#----------------------------------------------
+# set_log_file [log file path]
+#----------------------------------------------
+set_log_file() {
+  local TRY_FILE=$1
+
+  [ "[${TRY_FILE}]" = "[]" ] && return 0
+  [ -f ${TRY_FILE} ] || return 0
+  
+  LOG_FILE=${TRY_FILE}
+  return 0
+}
+
+#----------------------------------------------
+# log_output
+#----------------------------------------------
+log_output() {
+  local HAS_LOGFILE=0
+  while read OUTPUT; do
+    if [ "[${LOG_FILE}]" = "[]" ]; then
+      echo "${OUTPUT}" >&2
+    else
+      echo "${OUTPUT}" | tee -a ${LOG_FILE} >&2
+    fi 
+  done <&0
+  return 0
+}
+
+#----------------------------------------------
+# report_output
+#----------------------------------------------
+report_output() {
+  local OUTPUT
+  while read OUTPUT; do
+    if [ "[${OUTPUT}]" = "[]" ]; then
+      echo "" | log_output
+    else
+      echo "* ${OUTPUT}" | log_output
+    fi
+  done <&0
+}
+
+#----------------------------------------------
+# report_topic [...message]
+#----------------------------------------------
+report_topic() {
+  [ $# -eq 0 ] && return 0
+
+  cat <<MESSAGE_LIST | log_output
+
+************************************
+*
+* $@
+*
+************************************
+* $(date '+%D %T')
+
+MESSAGE_LIST
+
+  return 0
+}
+
+#----------------------------------------------
+# report_error [exit code] [...message]
+#----------------------------------------------
+report_error() {
+  local EXIT_CODE=$1
+  [ $# -gt 0 ] && shift 1
+
+  cat <<ERROR_MESSAGE | log_output
+
+!! Error: ${@}
+
+ERROR_MESSAGE
+
+  [ "[${EXIT_CODE}]" = "[]" ] && exit 1
+  [ "${EXIT_CODE}" -gt 0 ] >/dev/null 2>&1 && exit ${EXIT_CODE}
+  return 0
+}
+
+#----------------------------------------------
+# report_log [...message]
+#----------------------------------------------
+report_log() {
+  [ $# -eq 0 ] && return 0
+
+  cat <<MESSAGE_LIST | log_output
+* $@
+
+MESSAGE_LIST
+
+  return 0
+}
+
+#----------------------------------------------
+# report_step [...message]
+#----------------------------------------------
+report_step() {
+  [ $# -eq 0 ] && return 0
+
+  cat <<MESSAGE_LIST | log_output
+
+* ${BUILD_STEP}. $@
+------------------------------------
+** $(date '+%D %T')
+
+MESSAGE_LIST
+
+  BUILD_STEP=$((${BUILD_STEP} + 1))
+
+  return 0
+}

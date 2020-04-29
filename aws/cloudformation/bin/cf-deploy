@@ -3,7 +3,7 @@
 export AWS_PROFILE=diko
 
 # include
-. $(dirname $(realpath -m $0))/.cf-include
+. $(dirname $(realpath -m $0))/include/main
 
 OUTPUT_DIRECTORY=${WORKING_DIR}/dist
 DEPLOY_LOG_FILE=${OUTPUT_DIRECTORY}/build.log
@@ -12,7 +12,7 @@ OUTPUT_TEMPLATE=${OUTPUT_DIRECTORY}/cloudformation.yaml
 SHOULD_BUILD=0
 
 mkdir -p ${OUTPUT_DIRECTORY}
-touch ${DEPLOY_LOG_FILE}
+echo "" > ${DEPLOY_LOG_FILE}
 set_log_file ${DEPLOY_LOG_FILE}
 
 report_topic "Deploying Cloudformation Stack: $(get_stack_name)"
@@ -30,13 +30,7 @@ else
   report_step "Skipped Build Layers"
 fi
 
-if [ ${SHOULD_BUILD} -eq 1 ]; then
-  report_step "Build Lambda"
-  build_lambda ${OUTPUT_DIRECTORY}
-else
-  report_step "Skipped Build Lambda"
-fi
-
+# build package
 if [ ${SHOULD_BUILD} -eq 1 ]; then
   report_step "Build Package"
   build_package ${OUTPUT_DIRECTORY}

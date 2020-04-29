@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Test Lambda and Layers
+Description: Nested Stack
 Parameters:
   NodeVersion:
     Type: String
@@ -47,24 +47,12 @@ Resources:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                  - ses:SendEmail
-                  - ses:SendRawEmail
                   - lambda:InvokeFunction
                 Resource: "*"
       Path: "/"
       RoleName: !Sub
         - '${AWS::StackName}-${AWS::Region}-${RoleName}'
         - { RoleName: !Ref LambdaRoleName }
-
-  # test layer
-  HelloWorldLayerVersion:
-    Type: AWS::Lambda::LayerVersion
-    Properties:
-      LayerName: HelloWorldLayer
-      CompatibleRuntimes:
-        - !Ref NodeVersion
-      Content: layer
-      Description: "Hello World Layer"
 
   # hello-world test lambda
   HelloWorldLambdaLogGroup:
@@ -80,7 +68,7 @@ Resources:
       - HelloWorldLambdaLogGroup
       - HelloWorldLayerVersion
     Properties:
-      Code: lambda/hello-world
+      Code: dist/lambda/hello-world
       FunctionName: !Sub "${AWS::StackName}-hello-world"
       Handler: "index.handler"
       MemorySize: 128
@@ -89,8 +77,3 @@ Resources:
         - !Ref HelloWorldLayerVersion
       Runtime: !Ref NodeVersion
       Timeout: 6
-
-Outputs:
-  HelloWorldLayer:
-    Description: This contains reusables used for this stack.
-    Value: !Ref HelloWorldLayerVersion

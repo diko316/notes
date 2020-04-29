@@ -1,0 +1,369 @@
+#!/bin/sh -e
+
+###############################################
+# Package.json functions
+###############################################
+
+#----------------------------------------------
+# node_layer_package_file_update [package.json] [query path] [type] [value]
+#   prints 0 - if no change
+#   prints 1 - if there are changes
+#----------------------------------------------
+node_layer_package_file_update() {
+  local PACKAGE_FILE=$1
+  local PROPERTY_QUERY=$2
+  local PROPERTY_TYPE=$3
+  local PROPERTY_VALUE=$4
+  local DELETE_MODE=0
+  local CACHE_FILE
+  local CURRENT_VALUE
+  local FINALIZED_VALUE
+
+  # validate
+  [ "[${PACKAGE_FILE}]" = "[]" ] && \
+    report_error 1 "Requires [package.json] parameter."
+  [ -f "${PACKAGE_FILE}" ] || \
+    report_error 1 "[package.json] do not exist."
+
+  [ "[${PROPERTY_QUERY}]" = "[]" ] && \
+    report_error 1 "Requires [query path] parameter."
+
+  [ "[${PROPERTY_TYPE}]" = "[]" ] && DELETE_MODE=1
+
+  [ "[${PROPERTY_VALUE}]" = "[]" ] && DELETE_MODE=1
+
+  # run query
+  CACHE_FILE=$(dirname ${PACKAGE_FILE})/package-attribute-update-cache.json
+  CURRENT_VALUE=$(cat ${PACKAGE_FILE} | jq -c "${PROPERTY_QUERY}")
+
+  # for delete mode, check if current value exist.
+  if [ ${DELETE_MODE} -eq 1 ]; then
+    # dont need to update if it doesn't exist
+    if [ ${CURRENT_VALUE} = "null" ]; then
+      echo 0
+      return 0
+    fi
+
+    # remove property
+    cat ${PACKAGE_FILE} | jq "del(${PROPERTY_QUERY})" > ${CACHE_FILE}
+    mv -f ${CACHE_FILE} ${PACKAGE_FILE}
+
+    echo "1"
+    return 0
+  fi
+
+  # finalize value
+  case ${PROPERTY_TYPE} in
+    string)
+      FINALIZED_VALUE="\"${PROPERTY_VALUE}\""
+      ;;
+    number)
+      FINALIZED_VALUE=${PROPERTY_VALUE}
+      ;;
+    boolean)
+      if [ ${PROPERTY_VALUE} = "true" ] || [ ${PROPERTY_VALUE} = "false" ]; then
+        FINALIZED_VALUE=${PROPERTY_VALUE}
+      else
+        report_error 1 "Invalid boolean parameter: ${PROPERTY_VALUE}"
+      fi
+      ;;
+    object)
+      FINALIZED_VALUE=${PROPERTY_VALUE}
+      ;;
+    array)
+      FINALIZED_VALUE=${PROPERTY_VALUE}
+      ;;
+    *)
+      report_error 1 "Data type ${PROPERTY_TYPE} do not exist."
+      ;;
+  esac
+
+  # good! no need to update
+  if [ "${FINALIZED_VALUE}" = "${CURRENT_VALUE}" ]; then
+    echo "0"
+    return 0
+  fi
+
+  cat ${PACKAGE_FILE} | jq "${PROPERTY_QUERY} = ${FINALIZED_VALUE}" > ${CACHE_FILE} || echo "jq query failed! ${}"
+  mv -f ${CACHE_FILE} ${PACKAGE_FILE}
+
+  echo "1"
+  return 0
+}
+
+###############################################
+# Layer functions
+###############################################
+
+#----------------------------------------------
+# node_layer_copy_npm_packages [source package.json] [target package.json]
+#----------------------------------------------
+node_layer_copy_npm_packages() {
+  local SOURCE_PACKAGE_FILE=$1
+  local TARGET_PACKAGE_FILE=$2
+  local CACHE_FILE
+  local UPDATE_RESULT
+  local IS_UPDATED=0
+
+  local DEP_NAME
+  local DEP_VERSION
+
+  # validate package files
+  [ "[${SOURCE_PACKAGE_FILE}]" = "[]" ] && \
+    report_error 1 "Requires [source package.json] parameter."
+  [ -f ${SOURCE_PACKAGE_FILE} ] || \
+    report_error 1 "Invalid [source package.json] parameter. ${SOURCE_PACKAGE_FILE}"
+
+  [ "[${TARGET_PACKAGE_FILE}]" = "[]" ] && \
+    report_error 1 "Requires [target package.json] parameter."
+  [ -f ${TARGET_PACKAGE_FILE} ] || \
+    report_error 1 "Invalid [source package.json] parameter. ${TARGET_PACKAGE_FILE}"
+
+  CACHE_FILE=$(dirname ${TARGET_PACKAGE_FILE})/package-copy-deps-cache
+  cat ${TARGET_PACKAGE_FILE} > ${CACHE_FILE}
+
+  # no package dependencies, then remove target dependencies
+  if [ "$(cat ${SOURCE_PACKAGE_FILE} | jq '.dependencies')" = "null" ]; then
+    UPDATE_RESULT=$(node_layer_package_file_update ${CACHE_FILE} ".dependencies")
+    [ ${UPDATE_RESULT} -eq 1 ] && IS_UPDATED=1
+
+  # update dependencies
+  else
+    # iterate and update dependencies
+    while read DEP_NAME; do
+      DEP_VERSION=$(cat ${SOURCE_PACKAGE_FILE} | jq -r ".dependencies.\"${DEP_NAME}\"")
+
+      # skip layers
+      echo "${DEP_VERSION}" | grep -q "^file\:" && continue
+
+      UPDATE_RESULT=$(node_layer_package_file_update ${CACHE_FILE} ".dependencies.\"${DEP_NAME}\"" string "${DEP_VERSION}")
+      [ ${UPDATE_RESULT} -eq 1 ] && IS_UPDATED=1
+
+    done <<DEP_LIST
+$(cat ${SOURCE_PACKAGE_FILE} | jq -r '.dependencies | keys[]')
+DEP_LIST
+
+    # remove dependencies not found in target
+    if [ "$(cat ${CACHE_FILE} | jq '.dependencies')" != "null" ]; then
+      while read DEP_NAME; do
+        # skip layers
+        echo "${DEP_VERSION}" | grep -q "^file\:" && continue
+
+        # remove if not in source
+        if [ "$(cat ${SOURCE_PACKAGE_FILE} | jq -r ".dependencies.\"${DEP_NAME}\"")" = "null" ]; then
+          UPDATE_RESULT=$(node_layer_package_file_update ${CACHE_FILE} ".dependencies.\"${DEP_NAME}\"")
+          [ ${UPDATE_RESULT} -eq 1 ] && IS_UPDATED=1
+        fi
+      done <<DEP_LIST
+$(cat ${TARGET_PACKAGE_FILE} | jq -r '.dependencies | keys[]')
+DEP_LIST
+
+
+    fi
+  fi
+
+  # use cache file
+  if [ ${IS_UPDATED} -eq 1 ]; then
+    mv -f ${CACHE_FILE} ${TARGET_PACKAGE_FILE}
+  
+  # remove cache, no changes made
+  else
+    rm -f ${CACHE_FILE}
+  fi
+
+  return 0
+}
+
+
+#----------------------------------------------
+# node_rebuild_layer_dependencies [package.json] [layer package directory prefix]
+#----------------------------------------------
+node_rebuild_layer_dependencies() {
+  local PACKAGE_FILE=$1
+  local PACKAGE_DIR
+  local PACKAGE_NAME
+  local PACKAGE_VERSION
+  local TARGET_DIR_PREFIX=$2
+  local TARGET_DIR
+
+  local DEP_NAME
+  local DEP_VERSION
+  local LAYER_PACKAGE_NAME
+  local LAYER_DEP_DIR
+  local LAYER_DEP_NAME
+  local LAYER_DEP_VALUE
+
+  local IS_UPDATED
+  local CACHE_FILE
+  local UPDATE_RESULT
+
+  # validate package.json
+  [ "[${PACKAGE_FILE}]" = "[]" ] && \
+    report_error 1 "Requires [package.json] parameter."
+
+  [ -f "${PACKAGE_FILE}" ] || \
+     report_error 1 "[package.json] do not exist. ${PACKAGE_FILE}"
+  
+  PACKAGE_DIR=$(dirname ${PACKAGE_FILE})
+
+  TARGET_DIR_PREFIX=$2
+  if [ "[${TARGET_DIR_PREFIX}]" = "[]" ]; then
+    TARGET_DIR=${PACKAGE_DIR}
+  else
+    TARGET_DIR=${PACKAGE_DIR}/${TARGET_DIR_PREFIX}
+  fi
+
+  # validate target file
+  [ -d ${TARGET_DIR} ] || \
+    report_error 1 "target [layer package directory] do not exist. ${TARGET_DIR}"
+
+  CACHE_FILE=${PACKAGE_DIR}/package-rebuild-cache.json
+
+  cat ${PACKAGE_FILE} > ${CACHE_FILE}
+
+  # get package name and package versino
+  PACKAGE_NAME=$(cat ${PACKAGE_FILE} | jq -r '.name')
+  PACKAGE_VERSION=$(cat ${PACKAGE_FILE} | jq -r '.version')
+
+  IS_UPDATED=0
+
+  # cleanup dependencies only if dependencies exist
+  if [ "$(cat ${CACHE_FILE} | jq '.dependencies')" != "null" ]; then
+    while read DEP_NAME; do
+      DEP_VERSION=$(cat ${PACKAGE_FILE} | jq -r ".dependencies.\"${DEP_NAME}\"")
+
+      # if npm package, copy and continue
+      if ! echo ${DEP_VERSION} | grep -q '^file\:'; then
+        UPDATE_RESULT=$(node_layer_package_file_update ${CACHE_FILE} ".dependencies.\"${DEP_NAME}\"" string "${DEP_VERSION}")
+        [ ${UPDATE_RESULT} = 1 ] && IS_UPDATED=1
+        continue
+      fi
+
+      LAYER_PACKAGE_NAME=$(echo ${DEP_NAME} | sed -e 's|^@[^/]*/||')
+      LAYER_DEP_NAME="@${PACKAGE_NAME}/${LAYER_PACKAGE_NAME}"
+      # no prefix
+      if [ "[${TARGET_DIR_PREFIX}]" = "[]" ]; then
+        LAYER_DEP_VALUE="file:${LAYER_PACKAGE_NAME}"
+      # use prefix
+      else
+        LAYER_DEP_VALUE="file:${TARGET_DIR_PREFIX}/${LAYER_PACKAGE_NAME}"
+      fi
+
+      # remove non existent layer package or package source do not exist
+      if [ ${DEP_NAME} != ${LAYER_DEP_NAME} ] || [ ! -d ${TARGET_DIR}/${LAYER_PACKAGE_NAME} ]; then
+        node_layer_package_file_update ${CACHE_FILE} ".dependencies.\"${DEP_NAME}\"" > /dev/null
+        IS_UPDATED=1
+        # continue if directory do not exist
+        [ ! -d ${TARGET_DIR}/${LAYER_PACKAGE_NAME} ] && continue
+      fi
+
+      # set package
+      UPDATE_RESULT=$(node_layer_package_file_update ${CACHE_FILE} ".dependencies.\"${LAYER_DEP_NAME}\"" string "${LAYER_DEP_VALUE}")
+      [ ${UPDATE_RESULT} = 1 ] && IS_UPDATED=1
+
+    done <<DEP_LIST
+$(cat ${PACKAGE_FILE} | jq -r '.dependencies | keys[]')
+DEP_LIST
+
+  fi
+
+
+  # update or insert new dependencies
+  while read DEP_NAME; do
+    [ ${DEP_NAME} = "node_modules" ] && continue
+    [ -d ${TARGET_DIR}/${DEP_NAME} ] || continue
+
+    LAYER_DEP_NAME="@${PACKAGE_NAME}/${DEP_NAME}"
+    # no prefix
+    if [ "[${TARGET_DIR_PREFIX}]" = "[]" ]; then
+      LAYER_DEP_VALUE="file:${DEP_NAME}"
+    # use prefix
+    else
+      LAYER_DEP_VALUE="file:${TARGET_DIR_PREFIX}/${DEP_NAME}"
+    fi
+
+    # insert package
+    UPDATE_RESULT=$(node_layer_package_file_update ${CACHE_FILE} ".dependencies.\"${LAYER_DEP_NAME}\"" string "${LAYER_DEP_VALUE}")
+    [ ${UPDATE_RESULT} = 1 ] && IS_UPDATED=1
+  done <<DEP_LIST
+$(ls -1 ${TARGET_DIR})
+DEP_LIST
+
+  # merge if updated
+  if [ ${IS_UPDATED} -eq 1 ]; then
+    mv -f ${CACHE_FILE} ${PACKAGE_FILE}
+
+  # just remove, nothing changed
+  else
+    rm -f ${CACHE_FILE}
+  fi
+  
+  return 0
+}
+
+#----------------------------------------------
+# node_build_layers
+#----------------------------------------------
+node_build_layers() {
+  local WORKING_DIR=$1
+  local LAYER_DIR_PREFIX=layer/nodejs
+  local LAYER_DIR=${WORKING_DIR}/${LAYER_DIR_PREFIX}
+  local LAYER_PACKAGE_FILE=${LAYER_DIR}/package.json
+  local PACKAGE_FILE=${WORKING_DIR}/package.json
+
+  local PACKAGE_NAME
+  local PACKAGE_VERSION
+
+  # do not build if no package.json
+  [ -f ${PACKAGE_FILE} ] || return 0
+
+  # do not build if no layer/nodejs directory
+  [ -d ${LAYER_DIR} ] || return 0
+
+  # Rebuild main package.json with lambda layers
+  node_rebuild_layer_dependencies ${PACKAGE_FILE} layer/nodejs
+
+  PACKAGE_NAME=$(cat ${PACKAGE_FILE} | jq -r '.name')
+  PACKAGE_VERSION=$(cat ${PACKAGE_FILE} | jq -r '.version')
+
+  # create a copy for layer if layer manifest do not exist
+  if [ ! -f ${LAYER_PACKAGE_FILE} ]; then
+    cat <<PACKAGE_MANIFEST > ${LAYER_PACKAGE_FILE}
+{
+  "name": "${PACKAGE_NAME}",
+  "version": "${PACKAGE_VERSION}",
+  "description": "Layer package: ${PACKAGE_NAME}",
+  "private": true
+}
+PACKAGE_MANIFEST
+
+  # update manifest name and version
+  else
+    node_layer_package_file_update ${LAYER_PACKAGE_FILE} ".name" string "${PACKAGE_NAME}" > /dev/null
+    node_layer_package_file_update ${LAYER_PACKAGE_FILE} ".version" string "${PACKAGE_VERSION}" > /dev/null
+  fi
+  
+  # Copy NPM packages
+  node_layer_copy_npm_packages ${PACKAGE_FILE} ${LAYER_PACKAGE_FILE}
+
+  # Rebuild package.json in layer/nodejs
+  node_rebuild_layer_dependencies ${LAYER_PACKAGE_FILE}
+
+  # npm install layer package install
+  cd $(dirname ${LAYER_PACKAGE_FILE})
+  rm -Rf node_modules package-lock.json
+  npm install \
+    -y \
+    --no-fund \
+    --only production | report_output
+  cd ${WORKING_DIR}
+
+  # npm install global package
+  rm -Rf node_modules package-lock.json
+  npm install \
+    -y \
+    --no-fund \
+    --only production | report_output
+
+  return 0
+}

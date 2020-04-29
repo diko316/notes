@@ -1,0 +1,12 @@
+{
+  "name": "test-layer",
+  "version": "0.0.1",
+  "description": "Layer package: test-layer",
+  "private": true,
+  "dependencies": {
+    "@test-layer/package1": "file:package1",
+    "@test-layer/package2": "file:package2",
+    "@test-layer/package3": "file:package3",
+    "lodash": "^4.17.15"
+  }
+}

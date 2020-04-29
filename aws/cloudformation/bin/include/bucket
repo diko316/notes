@@ -1,0 +1,21 @@
+#!/bin/sh -e
+
+###############################################
+# S3 bucket
+###############################################
+#----------------------------------------------
+# create_bucket_if [bucket name]
+#----------------------------------------------
+create_bucket_if() {
+  BUCKET_NAME=$1
+  [ "[${BUCKET_NAME}]" = "[]" ] && \
+    report_error 0 "Requires [bucket name] parameter" &&
+    return 1
+
+  # inspect if bucket exist
+  aws s3 ls "s3://${BUCKET_NAME}" >/dev/null 2>&1 && return 0
+
+  aws s3 mb "s3://${BUCKET_NAME}" 2>&1 | report_output > /dev/null || return 1
+
+  return 0
+}

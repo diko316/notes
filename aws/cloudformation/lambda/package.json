@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "lodash": "^4.17.15",
-    "@test-layer/package1": "file:lambda/layer/package1",
-    "@test-layer/package2": "file:lambda/layer/package2"
+    "@test-layer/package1": "file:layer/nodejs/package1",
+    "@test-layer/package2": "file:layer/nodejs/package2",
+    "@test-layer/package3": "file:layer/nodejs/package3"
   }
 }
