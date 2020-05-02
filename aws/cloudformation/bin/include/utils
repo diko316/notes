@@ -1,0 +1,67 @@
+#!/bin/sh -e
+
+DEFAULT_CHECKSUM=$(echo "" | md5sum - | awk '{print $1}')
+
+#----------------------------------------------
+# jq_format
+#----------------------------------------------
+jq_format() {
+  local JQ_RESULT=$(cat)
+  [ "[${JQ_RESULT}]" = "[]" ] && echo "null" && return 0
+  echo ${JQ_RESULT}
+  return 0
+}
+
+get_md5_checksum() {
+  local TARGET_PATH
+  local CHECKSUM_RESULT
+  local SUMMARY_OUTPUT
+
+  local SUB_PATH
+  local SUB_FULLPATH
+  local SUB_OUTPUT
+
+  while [ $# -gt 0 ]; do
+    TARGET_PATH=$1
+    shift 1
+
+    [ "[${TARGET_PATH}]" = "[]" ] && continue
+    [ -e "${TARGET_PATH}" ] || continue
+    [ -r "${TARGET_PATH}" ] || continue
+    
+    while read SUB_PATH; do
+      # for non readable
+      if [ ! -r "${SUB_PATH}" ]; then
+        CHECKSUM_RESULT="${DEFAULT_CHECKSUM}"
+
+      # for directory
+      elif [ -d "${SUB_PATH}" ]; then
+        CHECKSUM_RESULT="${DEFAULT_CHECKSUM}"
+      # for file
+      elif [ -f "${SUB_PATH}" ]; then
+        CHECKSUM_RESULT=$(md5sum "${SUB_PATH}" | awk '{print $1}')
+      # other types
+      else
+        CHECKSUM_RESULT="${DEFAULT_CHECKSUM}"
+      fi
+
+      if [ "[${SUMMARY_OUTPUT}]" = "[]" ]; then
+        SUMMARY_OUTPUT="${CHECKSUM_RESULT}|${SUB_PATH}"
+      else
+        SUMMARY_OUTPUT="${SUMMARY_OUTPUT}:${CHECKSUM_RESULT}|${SUB_PATH}"
+      fi
+    done <<FILE_LIST
+$(find ${TARGET_PATH} -type f,d)
+FILE_LIST
+
+  done
+
+  if [ "[${SUMMARY_OUTPUT}]" = "[]" ]; then
+    echo ${DEFAULT_CHECKSUM}
+  else
+    echo "${SUMMARY_OUTPUT}" | md5sum - | awk '{print $1}'
+  fi
+
+  return 0
+}
+

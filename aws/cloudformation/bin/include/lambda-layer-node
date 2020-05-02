@@ -91,9 +91,51 @@ node_layer_package_file_update() {
   return 0
 }
 
-###############################################
-# Layer functions
-###############################################
+#----------------------------------------------
+# node_layer_copy_npm_packages [layer package directory] [layer name] [layer version]
+#----------------------------------------------
+node_layer_rebuild_package() {
+  local PACKAGE_DIR=$1
+  local LAYER_NAME=$2
+  local LAYER_VERSION=$3
+  local PACKAGE_FILE=${PACKAGE_DIR}/package.json
+  local PACKAGE_NAME
+  local PACKAGE_LAYER_NAME
+
+  [ "[${PACKAGE_DIR}]" = "[]" ] && \
+    report_error 1 "Requires [layer package directory] parameter."
+
+  [ "[${LAYER_NAME}]" = "[]" ] && \
+    report_error 1 "Requires [layer name] parameter."
+
+  [ "[${LAYER_VERSION}]" = "[]" ] && \
+    report_error 1 "Requires [layer version] parameter."
+
+  [ -d "${PACKAGE_DIR}" ] || \
+    report_error 1 "[layer package directory] parameter is not a directory: ${PACKAGE_DIR}"
+
+  PACKAGE_NAME=$(basename ${PACKAGE_DIR})
+  PACKAGE_LAYER_NAME="@${LAYER_NAME}/${PACKAGE_NAME}"
+
+  # create package file
+  if [ ! -f ${PACKAGE_FILE} ]; then
+    cat <<PACKAGE_JSON > ${PACKAGE_FILE}
+{
+  "name": "${PACKAGE_LAYER_NAME}",
+  "version": "${LAYER_VERSION}",
+  "description": "Layer package: ${PACKAGE_LAYER_NAME}",
+  "private": true
+}
+PACKAGE_JSON
+
+  # rebuild package.json
+  else
+    node_layer_package_file_update ${PACKAGE_FILE} '.name' string "${PACKAGE_LAYER_NAME}" > /dev/null
+    node_layer_package_file_update ${PACKAGE_FILE} '.version' string "${LAYER_VERSION}" > /dev/null
+  fi
+
+  return 0
+}
 
 #----------------------------------------------
 # node_layer_copy_npm_packages [source package.json] [target package.json]
@@ -313,6 +355,8 @@ node_build_layers() {
 
   local PACKAGE_NAME
   local PACKAGE_VERSION
+  local LAYER_NAME
+  local LAYER_PACKAGE_DIR
 
   # do not build if no package.json
   [ -f ${PACKAGE_FILE} ] || return 0
@@ -320,11 +364,25 @@ node_build_layers() {
   # do not build if no layer/nodejs directory
   [ -d ${LAYER_DIR} ] || return 0
 
-  # Rebuild main package.json with lambda layers
-  node_rebuild_layer_dependencies ${PACKAGE_FILE} layer/nodejs
-
   PACKAGE_NAME=$(cat ${PACKAGE_FILE} | jq -r '.name')
   PACKAGE_VERSION=$(cat ${PACKAGE_FILE} | jq -r '.version')
+
+  # rebuild layer package's "package.json"
+  while read LAYER_NAME; do
+    LAYER_PACKAGE_DIR=${LAYER_DIR}/${LAYER_NAME}
+    # only directories
+    [ -d ${LAYER_PACKAGE_DIR} ] || continue
+
+    node_layer_rebuild_package ${LAYER_PACKAGE_DIR} ${PACKAGE_NAME} ${PACKAGE_VERSION}
+
+    report_log "Layer rebuilt: @${PACKAGE_NAME}/${LAYER_NAME}"
+
+  done <<LAYER_PACKAGE_LIST
+$(ls -1 ${LAYER_DIR})
+LAYER_PACKAGE_LIST
+
+  # Rebuild main package.json with lambda layers
+  node_rebuild_layer_dependencies ${PACKAGE_FILE} layer/nodejs
 
   # create a copy for layer if layer manifest do not exist
   if [ ! -f ${LAYER_PACKAGE_FILE} ]; then
@@ -355,7 +413,8 @@ PACKAGE_MANIFEST
   npm install \
     -y \
     --no-fund \
-    --only production | report_output
+    --only production
+
   cd ${WORKING_DIR}
 
   # npm install global package
@@ -363,7 +422,7 @@ PACKAGE_MANIFEST
   npm install \
     -y \
     --no-fund \
-    --only production | report_output
+    --only production
 
   return 0
 }

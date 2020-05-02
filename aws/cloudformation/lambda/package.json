@@ -1,5 +1,5 @@
 {
-  "name": "test-layer",
+  "name": "layer-example",
   "version": "0.0.1",
   "description": "Test layers",
   "private": true,
@@ -9,8 +9,8 @@
   },
   "dependencies": {
     "lodash": "^4.17.15",
-    "@test-layer/package1": "file:layer/nodejs/package1",
-    "@test-layer/package2": "file:layer/nodejs/package2",
-    "@test-layer/package3": "file:layer/nodejs/package3"
+    "@layer-example/package1": "file:layer/nodejs/package1",
+    "@layer-example/package2": "file:layer/nodejs/package2",
+    "@layer-example/package3": "file:layer/nodejs/package3"
   }
 }

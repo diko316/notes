@@ -68,7 +68,7 @@ Resources:
       - HelloWorldLambdaLogGroup
       - HelloWorldLayerVersion
     Properties:
-      Code: dist/lambda/hello-world
+      Code: lambda/hello-world
       FunctionName: !Sub "${AWS::StackName}-hello-world"
       Handler: "index.handler"
       MemorySize: 128

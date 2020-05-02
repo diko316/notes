@@ -1,10 +1,55 @@
 #!/bin/sh -e
 
 ###############################################
-# Locl Variables
+# Local Variables
 ###############################################
+BUILD_STEP_STACK='[]'
 BUILD_STEP=1
 LOG_FILE=
+
+###############################################
+# Build step functions
+###############################################
+get_build_step() {
+  local STACK_STEP
+
+  if [ "$(echo ${BUILD_STEP_STACK} | jq -r '.|length')" -gt 0 ]; then
+    while read STACK_STEP; do
+      printf "%s." ${STACK_STEP}
+    done <<STACK_STEP_LIST
+$(echo ${BUILD_STEP_STACK} | jq -r '.[]')
+STACK_STEP_LIST
+
+  fi
+
+  echo "${BUILD_STEP}"
+}
+
+build_step_push() {
+  BUILD_STEP_STACK=$(echo ${BUILD_STEP_STACK} | jq -c ".[.|length] = ${BUILD_STEP}")
+  BUILD_STEP=1
+
+  return 0
+}
+
+build_step_pop() {
+  local STACK_LENGTH=$(echo ${BUILD_STEP_STACK} | jq -r '.|length')
+
+  # nothing to pop
+  [ "${STACK_LENGTH}" -eq 0 ] && return 0
+
+  # get last
+  STACK_LENGTH=$((${STACK_LENGTH} - 1))
+
+  BUILD_STEP=$(echo ${BUILD_STEP_STACK} | jq -r ".[${STACK_LENGTH}]")
+  BUILD_STEP_STACK=$(echo ${BUILD_STEP_STACK} | jq -c "del(.[${STACK_LENGTH}])")
+
+  return 0
+}
+
+build_step_iterate() {
+  BUILD_STEP=$((${BUILD_STEP} + 1))
+}
 
 ###############################################
 # Reporting functions
@@ -81,7 +126,7 @@ report_error() {
 
   cat <<ERROR_MESSAGE | log_output
 
-!! Error: ${@}
+* [error] ${@}
 
 ERROR_MESSAGE
 
@@ -105,20 +150,59 @@ MESSAGE_LIST
 }
 
 #----------------------------------------------
-# report_step [...message]
+# report_warning [...message]
 #----------------------------------------------
-report_step() {
+report_warning() {
   [ $# -eq 0 ] && return 0
 
   cat <<MESSAGE_LIST | log_output
 
-* ${BUILD_STEP}. $@
+* [warning] $@
+
+MESSAGE_LIST
+
+  return 0
+}
+
+#----------------------------------------------
+# log_step [...message]
+#----------------------------------------------
+log_step() {
+  [ $# -eq 0 ] && return 0
+
+  cat <<MESSAGE_LIST | log_output
+
+------------------------------------
+$(get_build_step). $@
 ------------------------------------
 ** $(date '+%D %T')
 
 MESSAGE_LIST
 
-  BUILD_STEP=$((${BUILD_STEP} + 1))
-
   return 0
+}
+
+#----------------------------------------------
+# report_step [...message]
+#----------------------------------------------
+report_step() {
+  log_step $@
+  build_step_iterate
+}
+
+#----------------------------------------------
+# report_sub_step [...message]
+#----------------------------------------------
+report_sub_step() {
+  log_step $@
+  build_step_push
+}
+
+#----------------------------------------------
+# report_last_step [...message]
+#----------------------------------------------
+report_last_step() {
+  log_step $@
+  build_step_pop
+  build_step_iterate
 }

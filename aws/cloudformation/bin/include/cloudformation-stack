@@ -1,0 +1,277 @@
+#!/bin/sh
+
+CF_LOG_FILE=
+
+#----------------------------------------------
+# cf_set_log_file [output directory]
+#----------------------------------------------
+# cf_set_log_file() {
+
+# }
+
+#----------------------------------------------
+# cf_template_file [working directory]
+#----------------------------------------------
+cf_template_file() {
+  local WORKING_DIR=$1
+  local FORMAT_NAME
+
+  [ "[${WORKING_DIR}]" = "[]" ] && \
+    report_error 1 "Requires [working directory]."
+
+  [ -d ${WORKING_DIR} ] || return 0
+
+  while read FORMAT_NAME; do
+    [ -f "${WORKING_DIR}/cloudformation.${FORMAT_NAME}" ] || continue
+    echo "cloudformation.${FORMAT_NAME}"
+    return 0
+  done <<TEMPLATE_FORMAT_LIST
+yaml
+yml
+json
+TEMPLATE_FORMAT_LIST
+  
+  return 0
+}
+
+#----------------------------------------------
+# cf_set_log_file [working directory]
+#----------------------------------------------
+cf_get_checksum() {
+  local WORKING_DIR=$1
+  local CHECKSUM_COMMAND
+  local TEMPLATE_FILE
+  local PACKAGE_FILE
+  local SUBSTACK_DIR
+  local SUBSTACK_CHECKSUM_FILE
+
+  if [ "[${WORKING_DIR}]" = "[]" ]; then
+    get_md5_checksum
+    return 0
+  fi
+
+  TEMPLATE_FILE=$(cf_template_file ${WORKING_DIR})
+  [ "[${TEMPLATE_FILE}]" = "[]" ] && TEMPLATE_FILE="cloudformation.yaml"
+
+  PACKAGE_FILE=${WORKING_DIR}/cloudformation.packaged.$(echo ${TEMPLATE_FILE} | grep -oP '[^\.]+$')
+
+  SUBSTACK_DIR=${WORKING_DIR}/stack
+
+  CHECKSUM_COMMAND="get_md5_checksum
+${WORKING_DIR}/lambda
+${WORKING_DIR}/layer
+${WORKING_DIR}/${TEMPLATE_FILE}
+${PACKAGE_FILE}"
+
+  if [ -d "${SUBSTACK_DIR}" ]; then
+    while read SUBSTACK_CHECKSUM_FILE; do
+      CHECKSUM_COMMAND="${CHECKSUM_COMMAND}
+${SUBSTACK_CHECKSUM_FILE}"
+    done <<CHECKSUM_LIST
+$(find "${WORKING_DIR}/stack" -maxdepth 2 -type f -name "checksum.md5")
+CHECKSUM_LIST
+
+  fi
+
+  eval $(echo ${CHECKSUM_COMMAND})
+
+  return 0
+}
+
+#----------------------------------------------
+# cf_count_nested_stack [working directory]
+#----------------------------------------------
+cf_count_nested_stack() {
+  local SUBSTACK_COUNT=0
+  local WORKING_DIR=$1
+  local SUBSTACK
+  local SUBSTACK_WORKING_DIR
+  local TEMPLATE_FILE
+
+  [ "[${WORKING_DIR}]" = "[]" ] && \
+    report_error 1 "Requires [working directory]."
+
+  if [ ! -d "${WORKING_DIR}" ]; then
+    echo ${SUBSTACK_COUNT}
+    return 0
+  fi
+
+  while read SUBSTACK; do
+    SUBSTACK_WORKING_DIR=${WORKING_DIR}/${SUBSTACK}
+
+    [ -d ${SUBSTACK_WORKING_DIR} ] || continue
+    [ "[$(cf_template_file ${SUBSTACK_WORKING_DIR})]" = "[]" ] && continue
+
+    SUBSTACK_COUNT=$((${SUBSTACK_COUNT} + 1))
+
+  done <<SUBSTACK_LIST
+$(ls -1 ${WORKING_DIR})
+SUBSTACK_LIST
+
+  echo ${SUBSTACK_COUNT}
+  return 0
+}
+
+#----------------------------------------------
+# cf_rebuild_stack [working directory] [stack name]
+#----------------------------------------------
+cf_rebuild_stack() {
+  local WORKING_DIR=$1
+  local STACK_NAME=$2
+  local RETURN_CODE=0
+  local SUBSTACK_DIR
+  local SUBSTACK
+  local SUBSTACK_NAME
+  local SUBSTACK_WORKING_DIR
+  local SUBSTACK_TEMPLATE
+
+  [ "[${WORKING_DIR}]" = "[]" ] && \
+    report_error 1 "Requires [working directory]."
+  [ -d "${WORKING_DIR}" ] || \
+    report_error 1 "[working directory] is not directory: ${WORKING_DIR}"
+
+  [ "[${STACK_NAME}]" = "[]" ] && STACK_NAME=$(basename ${WORKING_DIR})
+
+  [ "[$(cf_template_file ${WORKING_DIR})]" = "[]" ] && return 0
+
+  # rebuild lambda
+  if can_build_lambda ${WORKING_DIR}; then
+    report_step "Build Lambda."
+    build_lambda ${STACK_NAME} ${WORKING_DIR} || RETURN_CODE=$?
+  fi
+
+  # go through each cloudformation stack
+  SUBSTACK_DIR=${WORKING_DIR}/stack
+
+  # no nested stack
+  if [ "$(cf_count_nested_stack ${SUBSTACK_DIR})" -gt 0 ]; then
+    while read SUBSTACK; do
+      SUBSTACK_NAME="${STACK_NAME}-${SUBSTACK}"
+      SUBSTACK_WORKING_DIR=${SUBSTACK_DIR}/${SUBSTACK}
+
+      [ -d ${SUBSTACK_WORKING_DIR} ] || continue
+      SUBSTACK_TEMPLATE=$(cf_template_file ${SUBSTACK_WORKING_DIR})
+      [ "[${SUBSTACK_TEMPLATE}]" = "[]" ] && continue
+
+      report_sub_step "Rebuilding Nested Stack [${SUBSTACK_NAME}]."
+
+      # rebuild directory
+      cf_rebuild_stack ${SUBSTACK_WORKING_DIR} ${SUBSTACK_NAME}
+
+      report_last_step
+
+    done <<SUBSTACK_LIST
+$(ls -1 ${SUBSTACK_DIR})
+SUBSTACK_LIST
+
+  fi
+
+  return ${RETURN_CODE}
+}
+
+#----------------------------------------------
+# cf_rebuild_stack [working directory] [stack name]
+#----------------------------------------------
+cf_package_stack() {
+  local WORKING_DIR=$1
+  local STACK_NAME=$2
+  local RETURN_CODE=0
+  
+  local SUBSTACK_DIR
+  local SUBSTACK
+  local SUBSTACK_NAME
+  local SUBSTACK_WORKING_DIR
+
+  local SUBSTACK_TEMPLATE
+  local TEMPLATE_FILE
+  local PACKAGE_FILE
+  local CHECKSUM_FILE
+  local CURRENT_CHECKSUM
+  local SHOULD_PACKAGE=0
+
+  [ "[${WORKING_DIR}]" = "[]" ] && \
+    report_error 1 "Requires [working directory]."
+  [ -d "${WORKING_DIR}" ] || \
+    report_error 1 "[working directory] is not directory: ${WORKING_DIR}"
+
+  TEMPLATE_FILE=$(cf_template_file ${WORKING_DIR})
+
+  [ "[${TEMPLATE_FILE}]" = "[]" ] && return 0
+
+  [ "[${STACK_NAME}]" = "[]" ] && STACK_NAME=$(basename ${WORKING_DIR})
+
+  # rebuild lambda
+  if can_build_lambda ${WORKING_DIR}; then
+    report_step "Build Lambda."
+    build_lambda ${STACK_NAME} ${WORKING_DIR} || RETURN_CODE=$?
+  fi
+
+  # go through each cloudformation stack
+  SUBSTACK_DIR=${WORKING_DIR}/stack
+
+  # nested stack
+  if [ "$(cf_count_nested_stack ${SUBSTACK_DIR})" -gt 0 ]; then
+    while read SUBSTACK; do
+      SUBSTACK_NAME="${STACK_NAME}-${SUBSTACK}"
+      SUBSTACK_WORKING_DIR=${SUBSTACK_DIR}/${SUBSTACK}
+
+      [ -d ${SUBSTACK_WORKING_DIR} ] || continue
+      SUBSTACK_TEMPLATE=$(cf_template_file ${SUBSTACK_WORKING_DIR})
+      [ "[${SUBSTACK_TEMPLATE}]" = "[]" ] && continue
+
+      build_step_push
+
+      # package sub stack
+      cf_package_stack ${SUBSTACK_WORKING_DIR} ${SUBSTACK_NAME}
+
+      report_last_step
+
+    done <<SUBSTACK_LIST
+$(ls -1 ${SUBSTACK_DIR})
+SUBSTACK_LIST
+
+  fi
+
+  CHECKSUM_FILE=${WORKING_DIR}/checksum.md5
+  CURRENT_CHECKSUM=$(cf_get_checksum ${WORKING_DIR})
+
+  if [ -f ${CHECKSUM_FILE} ]; then
+    [ "[$(cat ${CHECKSUM_FILE})]" = "[${CURRENT_CHECKSUM}]" ] || \
+      SHOULD_PACKAGE=1
+
+  else
+    SHOULD_PACKAGE=1
+  fi
+
+  # package!
+  if [ ${SHOULD_PACKAGE} -eq 1 ]; then
+    if ! bucket_create_if ${STACK_BUCKET_NAME}; then
+      report_warning "There were errors creating your bucket ${STACK_BUCKET_NAME}"
+      return 1
+    fi
+
+
+    PACKAGE_FILE=${WORKING_DIR}/cloudformation.packaged.$(echo ${TEMPLATE_FILE} | grep -oP '[^\.]+$')
+
+    report_step "Packaging Stack: ${STACK_NAME}"
+
+    # package
+    if ! aws cloudformation package \
+          --template-file "${WORKING_DIR}/${TEMPLATE_FILE}" \
+          --s3-bucket ${STACK_BUCKET_NAME} \
+          --s3-prefix ${STACK_BUCKET_PREFIX} \
+          --output-template-file "${PACKAGE_FILE}" 2>&1; then
+      report_warning "There were errors packaging your cloudformation template ${STACK_NAME}"
+      return 1
+    fi
+
+    # update checksum
+    cf_get_checksum ${WORKING_DIR} > ${CHECKSUM_FILE}
+
+  # report that there are no updates for current stack
+  else
+    report_log "There are no updates for stack ${STACK_NAME}"
+  fi
+
+  return 0
+}

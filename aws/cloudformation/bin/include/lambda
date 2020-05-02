@@ -1,18 +1,44 @@
 #!/bin/sh -e
 
 #----------------------------------------------
-# build_layers [working directory]
+# can_build_lambda [working directory]
 #----------------------------------------------
-build_layers() {
-  local CURRENT_CWD=$1
-
-  [ "[${CURRENT_CWD}]" = "[]" ] && \
+can_build_lambda() {
+  local WORKING_DIR=$1
+  [ "[${WORKING_DIR}]" = "[]" ] && \
     report_error 1 "Requires current [working directory] parameter."
 
   # build node layers
-  if [ -f ${CURRENT_CWD}/package.json ]; then
-    node_build_layers ${CURRENT_CWD}
+  if [ -f ${WORKING_DIR}/package.json ]; then
+    return 0
+  fi
+
+  return 1
+}
+
+#----------------------------------------------
+# build_lambda [stack name] [working directory]
+#----------------------------------------------
+build_lambda() {
+  local STACK_NAME=$1
+  local WORKING_DIR=$2
+
+  [ "[${STACK_NAME}]" = "[]" ] && \
+    report_error 1 "Requires [stack name] parameter."
+
+  [ "[${WORKING_DIR}]" = "[]" ] && \
+    report_error 1 "Requires current [working directory] parameter."
+
+  # build node layers
+  if [ -f ${WORKING_DIR}/package.json ]; then
+    node_build_layers ${WORKING_DIR}
+    report_log "Lambda rebuilt in stack [${STACK_NAME}]."
+
+  # no layer found
+  else
+    report_log "No Lambda found in stack [${STACK_NAME}]."
   fi
 
   return 0
 }
+

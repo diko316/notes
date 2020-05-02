@@ -1,21 +1,20 @@
-AWSTemplateFormatVersion: "2010-09-09"
+AWSTemplateFormatVersion: '2010-09-09'
 Description: Nested Stack
 Parameters:
   NodeVersion:
     Type: String
-    Default: "nodejs10.x"
+    Default: nodejs10.x
     Description: Version of NodeJS to use.
   LambdaRoleName:
     Type: String
-    Default: "lambda-role"
+    Default: lambda-role
     Description: Version of NodeJS to use.
 Resources:
   Nested1CloudFormationStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: stack/nested1/cloudformation.packaged.yaml
-
+      TemplateURL: https://s3.amazonaws.com/cf-deploy-nested-stack/2020-05-01/d3edee99086693bf3130cafceb70fe38.template
   Nested2CloudFormationStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: stack/nested2/cloudformation.packaged.yaml
+      TemplateURL: https://s3.amazonaws.com/cf-deploy-nested-stack/2020-05-01/0c66316d8d8804310dbedb2712322ed0.template

@@ -3,19 +3,54 @@
 ###############################################
 # S3 bucket
 ###############################################
+CREATED_BUCKETS="[]"
+
+bucket_add_list() {
+  local BUCKET_NAME=$1
+
+  [ "[${BUCKET_NAME}]" = "[]" ] && return 0
+
+  CREATED_BUCKETS=$(echo ${CREATED_BUCKETS} | jq -c ".[.|length] = \"${BUCKET_NAME}\"")
+  return 0
+}
+
+bucket_in_list() {
+  local BUCKET_NAME=$1
+  local BUCKET_IN_LIST
+
+  [ "[${BUCKET_NAME}]" = "[]" ] && return 1
+
+  while read BUCKET_IN_LIST; do
+    [ "${BUCKET_IN_LIST}" = "{BUCKET_NAME}" ] && return 0
+  done <<BUCKET_LIST
+$(echo ${CREATED_BUCKETS} | jq -r '.[]')
+BUCKET_LIST
+
+  return 1
+}
+
 #----------------------------------------------
-# create_bucket_if [bucket name]
+# bucket_create_if [bucket name]
 #----------------------------------------------
-create_bucket_if() {
-  BUCKET_NAME=$1
+bucket_create_if() {
+  local BUCKET_NAME=$1
+
   [ "[${BUCKET_NAME}]" = "[]" ] && \
     report_error 0 "Requires [bucket name] parameter" &&
     return 1
 
+  bucket_in_list ${BUCKET_NAME} && return 0
+
   # inspect if bucket exist
-  aws s3 ls "s3://${BUCKET_NAME}" >/dev/null 2>&1 && return 0
+  if aws s3 ls "s3://${BUCKET_NAME}" >/dev/null 2>&1; then
+    bucket_add_list ${BUCKET_NAME}
+    return 0
+  fi
 
-  aws s3 mb "s3://${BUCKET_NAME}" 2>&1 | report_output > /dev/null || return 1
+  if aws s3 mb "s3://${BUCKET_NAME}" 2>&1; then
+    bucket_add_list ${BUCKET_NAME}
+    return 0
+  fi
 
-  return 0
+  return 1
 }

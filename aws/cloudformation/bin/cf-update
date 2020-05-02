@@ -8,18 +8,20 @@ export AWS_PROFILE=diko
 WORKING_DIR=$(pwd)
 
 OUTPUT_DIRECTORY=${WORKING_DIR}/dist
-DEPLOYMENT_MANIFEST=${OUTPUT_DIRECTORY}/deployment.json
 UPDATE_LOG_FILE=${OUTPUT_DIRECTORY}/build.log
 
 mkdir -p ${OUTPUT_DIRECTORY}
 touch ${UPDATE_LOG_FILE}
 set_log_file ${UPDATE_LOG_FILE}
 
-report_topic "Rebuilding Cloudformation Stack Package: $(get_stack_name)"
+report_topic "Rebuilding Cloudformation Stack"
 
-# build layers
-report_step "Build Lambda Layer."
-build_layers ${WORKING_DIR}
+cf_rebuild_stack ${WORKING_DIR}
+# cf_get_checksum ${WORKING_DIR}
+
+# build lambda
+# report_step "Build Lambda."
+# build_lambda $(basename ${WORKING_DIR}) ${WORKING_DIR}
 
 # remove if it exist, then remove
 # if [ -f ${DEPLOYMENT_MANIFEST} ]; then

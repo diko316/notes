@@ -1,5 +1,5 @@
 {
-  "name": "@test-layer/package3",
+  "name": "@layer-example/package3",
   "version": "0.0.1",
   "description": "Layer package: package3",
   "main": "index.js",

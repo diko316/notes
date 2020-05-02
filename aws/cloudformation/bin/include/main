@@ -6,15 +6,18 @@
 ###############################################
 export TOOLS_DIR=$(dirname $(realpath -m $0))
 export TOOLS_INCLUDE=${TOOLS_DIR}/include
-# export WORKING_DIR=$(pwd)
+export MAIN_STACK_NAME=$(basename $(pwd))
+export STACK_BUCKET_NAME=cf-deploy-${MAIN_STACK_NAME}
+export STACK_BUCKET_PREFIX=$(date '+%Y-%m-%d')
 
 # export CF_TEMPLATE_FILE=${WORKING_DIR}/cloudformation.yaml
 
+. ${TOOLS_INCLUDE}/utils
 . ${TOOLS_INCLUDE}/reporting
-. ${TOOLS_INCLUDE}/jq
 . ${TOOLS_INCLUDE}/bucket
 . ${TOOLS_INCLUDE}/lambda-layer-node
 . ${TOOLS_INCLUDE}/lambda
+. ${TOOLS_INCLUDE}/cloudformation-stack
 . ${TOOLS_INCLUDE}/cloudformation
 
 

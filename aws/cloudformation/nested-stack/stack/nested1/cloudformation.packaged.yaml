@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Nested Stack
+Parameters:
+  NodeVersion:
+    Type: String
+    Default: nodejs10.x
+    Description: Version of NodeJS to use.
+  LambdaRoleName:
+    Type: String
+    Default: lambda-role
+    Description: Version of NodeJS to use.
+Resources:
+  IamRoleLambdaExecution:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Policies:
+      - PolicyName:
+          Fn::Sub:
+          - ${AWS::StackName}-${AWS::Region}-${RoleName}
+          - RoleName:
+              Ref: LambdaRoleName
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogStream
+            - logs:CreateLogGroup
+            Resource:
+            - Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}*:*
+          - Effect: Allow
+            Action:
+            - logs:PutLogEvents
+            Resource:
+            - Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}*:*:*
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            - lambda:InvokeFunction
+            Resource: '*'
+      Path: /
+      RoleName:
+        Fn::Sub:
+        - ${AWS::StackName}-${AWS::Region}-${RoleName}
+        - RoleName:
+            Ref: LambdaRoleName
+  HelloWorldLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Sub: /aws/lambda/${AWS::StackName}-hello-world
+  HelloWorldLambdaFunction:
+    Type: AWS::Lambda::Function
+    DependsOn:
+    - IamRoleLambdaExecution
+    - HelloWorldLambdaLogGroup
+    - HelloWorldLayerVersion
+    Properties:
+      Code:
+        S3Bucket: cf-deploy-nested-stack
+        S3Key: 2020-05-01/f2dc91fa1e7f4b9f42e6dca620b86af5
+      FunctionName:
+        Fn::Sub: ${AWS::StackName}-hello-world
+      Handler: index.handler
+      MemorySize: 128
+      Role:
+        Fn::GetAtt:
+        - IamRoleLambdaExecution
+        - Arn
+      Layers:
+      - Ref: HelloWorldLayerVersion
+      Runtime:
+        Ref: NodeVersion
+      Timeout: 6
