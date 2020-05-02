@@ -10,11 +10,11 @@ Parameters:
     Default: lambda-role
     Description: Version of NodeJS to use.
 Resources:
-  Nested1CloudFormationStack:
+  Nested1:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: https://s3.amazonaws.com/cf-deploy-nested-stack/2020-05-01/d3edee99086693bf3130cafceb70fe38.template
-  Nested2CloudFormationStack:
+      TemplateURL: https://s3.amazonaws.com/cf-deploy-nested-stack/37156a1a9a4d422fd865ba1d80e88c97/ab3198c2a26f0c7eeb478339fd8527df.template
+  Nested2:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: https://s3.amazonaws.com/cf-deploy-nested-stack/2020-05-01/0c66316d8d8804310dbedb2712322ed0.template
+      TemplateURL: https://s3.amazonaws.com/cf-deploy-nested-stack/37156a1a9a4d422fd865ba1d80e88c97/19608ec66b7d5495f6fc6be4c780b39c.template

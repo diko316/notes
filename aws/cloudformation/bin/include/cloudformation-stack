@@ -1,14 +1,5 @@
 #!/bin/sh
 
-CF_LOG_FILE=
-
-#----------------------------------------------
-# cf_set_log_file [output directory]
-#----------------------------------------------
-# cf_set_log_file() {
-
-# }
-
 #----------------------------------------------
 # cf_template_file [working directory]
 #----------------------------------------------
@@ -35,15 +26,41 @@ TEMPLATE_FORMAT_LIST
 }
 
 #----------------------------------------------
+# cf_deploy_file [working directory]
+#----------------------------------------------
+cf_deploy_file() {
+  local WORKING_DIR=$1
+  local FORMAT_NAME
+
+  [ "[${WORKING_DIR}]" = "[]" ] && \
+    report_error 1 "Requires [working directory]."
+
+  [ -d ${WORKING_DIR} ] || return 0
+
+  while read FORMAT_NAME; do
+    [ -f "${WORKING_DIR}/cloudformation.packaged.${FORMAT_NAME}" ] || continue
+    echo "cloudformation.packaged.${FORMAT_NAME}"
+    return 0
+  done <<TEMPLATE_FORMAT_LIST
+yaml
+yml
+json
+TEMPLATE_FORMAT_LIST
+  
+  return 0
+}
+
+#----------------------------------------------
 # cf_set_log_file [working directory]
 #----------------------------------------------
-cf_get_checksum() {
+cf_get_stack_dir_checksum() {
   local WORKING_DIR=$1
   local CHECKSUM_COMMAND
   local TEMPLATE_FILE
   local PACKAGE_FILE
   local SUBSTACK_DIR
-  local SUBSTACK_CHECKSUM_FILE
+  local SUBSTACK_CWD
+  local SUBSTACK_TEMPLATE_FILE
 
   if [ "[${WORKING_DIR}]" = "[]" ]; then
     get_md5_checksum
@@ -53,27 +70,151 @@ cf_get_checksum() {
   TEMPLATE_FILE=$(cf_template_file ${WORKING_DIR})
   [ "[${TEMPLATE_FILE}]" = "[]" ] && TEMPLATE_FILE="cloudformation.yaml"
 
-  PACKAGE_FILE=${WORKING_DIR}/cloudformation.packaged.$(echo ${TEMPLATE_FILE} | grep -oP '[^\.]+$')
-
   SUBSTACK_DIR=${WORKING_DIR}/stack
 
   CHECKSUM_COMMAND="get_md5_checksum
 ${WORKING_DIR}/lambda
 ${WORKING_DIR}/layer
-${WORKING_DIR}/${TEMPLATE_FILE}
-${PACKAGE_FILE}"
+${WORKING_DIR}/${TEMPLATE_FILE}"
 
   if [ -d "${SUBSTACK_DIR}" ]; then
-    while read SUBSTACK_CHECKSUM_FILE; do
+    while read SUBSTACK_CWD; do
+      SUBSTACK_TEMPLATE_FILE=$(cf_template_file ${SUBSTACK_CWD})
+
+      [ "[${SUBSTACK_TEMPLATE_FILE}]" = "[]" ] && continue
+
       CHECKSUM_COMMAND="${CHECKSUM_COMMAND}
-${SUBSTACK_CHECKSUM_FILE}"
+${SUBSTACK_CWD}/lambda
+${SUBSTACK_CWD}/layer
+${SUBSTACK_CWD}/${SUBSTACK_TEMPLATE_FILE}"
+
     done <<CHECKSUM_LIST
-$(find "${WORKING_DIR}/stack" -maxdepth 2 -type f -name "checksum.md5")
+$(find "${WORKING_DIR}" -type d -regex '.*/stack/[^/]+$')
 CHECKSUM_LIST
 
   fi
 
   eval $(echo ${CHECKSUM_COMMAND})
+
+  return 0
+}
+
+#----------------------------------------------
+# cf_get_current_stack_checksum [working directory]
+#----------------------------------------------
+cf_get_current_stack_checksum() {
+  local WORKING_DIR=$1
+  local CHECKSUM_FILE
+
+  [ "[${WORKING_DIR}]" = "[]" ] && \
+    report_error 1 "Requires [working directory]."
+
+  [ -d "${WORKING_DIR}" ] || \
+    report_error 1 "[working directory] is not a directory."
+
+  CHECKSUM_FILE=${WORKING_DIR}/checksum.json
+
+  if [ ! -f "${CHECKSUM_FILE}" ]; then
+    get_md5_checksum
+    return 0
+  fi
+
+  cat ${CHECKSUM_FILE} | jq -r '.package'
+  return 0
+}
+
+#----------------------------------------------
+# cf_update_stack_checksum [working directory]
+#----------------------------------------------
+cf_update_stack_checksum() {
+  local WORKING_DIR=$1
+  local CHECKSUM
+  local CHECKSUM_FILE
+  local CACHE
+
+  [ "[${WORKING_DIR}]" = "[]" ] && \
+    report_error 1 "Requires [working directory]."
+
+  [ -d "${WORKING_DIR}" ] || \
+    report_error 1 "[working directory] is not a directory."
+
+  CHECKSUM_FILE=${WORKING_DIR}/checksum.json
+  CHECKSUM=$(cf_get_stack_dir_checksum ${WORKING_DIR})
+
+  # create file
+  if [ ! -f ${CHECKSUM_FILE} ]; then
+    cat <<JSON > ${CHECKSUM_FILE}
+{
+  "package": "${CHECKSUM}",
+  "deployed": null
+}
+JSON
+
+  # update file
+  elif [ "[$(cat ${CHECKSUM_FILE} | jq -r '.package')]" != "[${CHECKSUM}]" ]; then
+    CACHE=$(cat ${CHECKSUM_FILE} | jq -c '.')
+    echo "${CACHE}" | jq ".package = \"${CHECKSUM}\"" > ${CHECKSUM_FILE}
+  fi
+
+  return 0
+}
+
+#----------------------------------------------
+# cf_get_current_deploy_checksum [working directory]
+#----------------------------------------------
+cf_get_current_deploy_checksum() {
+  local WORKING_DIR=$1
+  local CHECKSUM_FILE
+
+  [ "[${WORKING_DIR}]" = "[]" ] && \
+    report_error 1 "Requires [working directory]."
+
+  [ -d "${WORKING_DIR}" ] || \
+    report_error 1 "[working directory] is not a directory."
+
+  CHECKSUM_FILE=${WORKING_DIR}/checksum.json
+
+  if [ ! -f "${CHECKSUM_FILE}" ]; then
+    get_md5_checksum
+    return 0
+  fi
+
+  cat ${CHECKSUM_FILE} | jq -r '.deployed'
+  return 0
+}
+
+#----------------------------------------------
+# cf_update_deploy_checksum [working directory]
+#----------------------------------------------
+cf_update_deploy_checksum() {
+  local WORKING_DIR=$1
+  local CHECKSUM
+  local CHECKSUM_FILE
+  local CACHE
+
+  [ "[${WORKING_DIR}]" = "[]" ] && \
+    report_error 1 "Requires [working directory]."
+
+  [ -d "${WORKING_DIR}" ] || \
+    report_error 1 "[working directory] is not a directory."
+
+  CHECKSUM_FILE=${WORKING_DIR}/checksum.json
+  CHECKSUM=$(cf_get_stack_dir_checksum ${WORKING_DIR})
+
+  # create file
+  if [ ! -f ${CHECKSUM_FILE} ]; then
+    cat <<JSON > ${CHECKSUM_FILE}
+{
+  "package": "${CHECKSUM}",
+  "deployed": "${CHECKSUM}"
+}
+JSON
+
+  # update file
+  elif [ "[$(cat ${CHECKSUM_FILE} | jq -r '.deployed')]" != "[${CHECKSUM}]" ]; then
+    CACHE=$(cat ${CHECKSUM_FILE} | jq -c '.')
+    echo "${CACHE}" | jq ".deployed = \"${CHECKSUM}\"" > ${CHECKSUM_FILE}
+  fi
 
   return 0
 }
@@ -170,7 +311,7 @@ SUBSTACK_LIST
 }
 
 #----------------------------------------------
-# cf_rebuild_stack [working directory] [stack name]
+# cf_package_stack [working directory] [stack name]
 #----------------------------------------------
 cf_package_stack() {
   local WORKING_DIR=$1
@@ -233,15 +374,10 @@ SUBSTACK_LIST
   fi
 
   CHECKSUM_FILE=${WORKING_DIR}/checksum.md5
-  CURRENT_CHECKSUM=$(cf_get_checksum ${WORKING_DIR})
+  CURRENT_CHECKSUM=$(cf_get_stack_dir_checksum ${WORKING_DIR})
 
-  if [ -f ${CHECKSUM_FILE} ]; then
-    [ "[$(cat ${CHECKSUM_FILE})]" = "[${CURRENT_CHECKSUM}]" ] || \
-      SHOULD_PACKAGE=1
-
-  else
+  [ "[$(cf_get_current_stack_checksum ${WORKING_DIR})]" != "[${CURRENT_CHECKSUM}]" ] && \
     SHOULD_PACKAGE=1
-  fi
 
   # package!
   if [ ${SHOULD_PACKAGE} -eq 1 ]; then
@@ -260,18 +396,56 @@ SUBSTACK_LIST
           --template-file "${WORKING_DIR}/${TEMPLATE_FILE}" \
           --s3-bucket ${STACK_BUCKET_NAME} \
           --s3-prefix ${STACK_BUCKET_PREFIX} \
-          --output-template-file "${PACKAGE_FILE}" 2>&1; then
+          --output-template-file "${PACKAGE_FILE}"; then
       report_warning "There were errors packaging your cloudformation template ${STACK_NAME}"
       return 1
     fi
 
     # update checksum
-    cf_get_checksum ${WORKING_DIR} > ${CHECKSUM_FILE}
-
-  # report that there are no updates for current stack
-  else
-    report_log "There are no updates for stack ${STACK_NAME}"
+    cf_update_stack_checksum ${WORKING_DIR}
+    return 0
   fi
 
+  report_log "There are no updates for stack ${STACK_NAME}"
+  return 0
+}
+
+
+#----------------------------------------------
+# cf_deploy_stack [working directory] [stack name]
+#----------------------------------------------
+cf_deploy_stack() {
+  local WORKING_DIR=$1
+  local STACK_NAME=$2
+  local STACK_CHECKSUM
+  local DEPLOYMENT_FILE
+
+  [ "[${WORKING_DIR}]" = "[]" ] && \
+    report_error 1 "Requires [working directory]."
+  [ -d "${WORKING_DIR}" ] || \
+    report_error 1 "[working directory] is not directory: ${WORKING_DIR}"
+
+  [ "[${STACK_NAME}]" = "[]" ] && STACK_NAME=$(basename ${WORKING_DIR})
+
+  DEPLOYMENT_FILE=${WORKING_DIR}/$(cf_deploy_file ${WORKING_DIR})
+  STACK_CHECKSUM=$(cf_get_stack_dir_checksum ${WORKING_DIR})
+
+  if [ "[$(cf_get_current_deploy_checksum ${WORKING_DIR})]" = "[${STACK_CHECKSUM}]" ]; then
+    report_log "There are no updates to deploy for stack ${STACK_NAME}"
+    return 0
+  fi
+
+  if ! aws cloudformation deploy \
+          --stack-name ${STACK_NAME} \
+          --template-file ${DEPLOYMENT_FILE} \
+          --capabilities CAPABILITY_NAMED_IAM \
+          --s3-bucket "${STACK_BUCKET_NAME}" \
+          --s3-prefix "${STACK_BUCKET_PREFIX}" \
+          --output json; then
+    report_error 0 "Deployment failed. Please run redeploy command again ${REDEPLOY_COMMAND}"
+    return 1
+  fi
+
+  cf_update_deploy_checksum ${WORKING_DIR}
   return 0
 }

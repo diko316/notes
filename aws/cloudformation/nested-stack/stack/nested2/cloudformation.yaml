@@ -66,14 +66,11 @@ Resources:
     DependsOn:
       - IamRoleLambdaExecution
       - HelloWorldLambdaLogGroup
-      - HelloWorldLayerVersion
     Properties:
       Code: lambda/hello-world
       FunctionName: !Sub "${AWS::StackName}-hello-world"
       Handler: "index.handler"
       MemorySize: 128
       Role: !GetAtt IamRoleLambdaExecution.Arn
-      Layers:
-        - !Ref HelloWorldLayerVersion
       Runtime: !Ref NodeVersion
       Timeout: 6

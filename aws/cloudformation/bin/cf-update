@@ -5,7 +5,7 @@ export AWS_PROFILE=diko
 # include
 . $(dirname $(realpath -m $0))/include/main
 
-WORKING_DIR=$(pwd)
+WORKING_DIR=${MAIN_STACK_DIR}
 
 OUTPUT_DIRECTORY=${WORKING_DIR}/dist
 UPDATE_LOG_FILE=${OUTPUT_DIRECTORY}/build.log

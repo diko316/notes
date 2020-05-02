@@ -10,12 +10,12 @@ Parameters:
     Default: "lambda-role"
     Description: Version of NodeJS to use.
 Resources:
-  Nested1CloudFormationStack:
+  Nested1:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: stack/nested1/cloudformation.packaged.yaml
 
-  Nested2CloudFormationStack:
+  Nested2:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: stack/nested2/cloudformation.packaged.yaml

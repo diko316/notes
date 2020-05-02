@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Nested Stack
+Description: Test Lambda and Layers
 Parameters:
   NodeVersion:
     Type: String
@@ -47,6 +47,8 @@ Resources:
             - logs:CreateLogGroup
             - logs:CreateLogStream
             - logs:PutLogEvents
+            - ses:SendEmail
+            - ses:SendRawEmail
             - lambda:InvokeFunction
             Resource: '*'
       Path: /
@@ -55,6 +57,16 @@ Resources:
         - ${AWS::StackName}-${AWS::Region}-${RoleName}
         - RoleName:
             Ref: LambdaRoleName
+  HelloWorldLayerVersion:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: HelloWorldLayer
+      CompatibleRuntimes:
+      - Ref: NodeVersion
+      Content:
+        S3Bucket: cf-deploy-lambda
+        S3Key: b0f98f88d784598b1c95fbbd6b8950ce/18371baf522eac59e072c5b47c2cbdb3
+      Description: Hello World Layer
   HelloWorldLambdaLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -65,10 +77,11 @@ Resources:
     DependsOn:
     - IamRoleLambdaExecution
     - HelloWorldLambdaLogGroup
+    - HelloWorldLayerVersion
     Properties:
       Code:
-        S3Bucket: cf-deploy-nested-stack
-        S3Key: 37156a1a9a4d422fd865ba1d80e88c97/f6b644beacf4f20089d590a77298340b
+        S3Bucket: cf-deploy-lambda
+        S3Key: b0f98f88d784598b1c95fbbd6b8950ce/c1f6906005ac0ac945baaf073a69af30
       FunctionName:
         Fn::Sub: ${AWS::StackName}-hello-world
       Handler: index.handler
@@ -77,6 +90,13 @@ Resources:
         Fn::GetAtt:
         - IamRoleLambdaExecution
         - Arn
+      Layers:
+      - Ref: HelloWorldLayerVersion
       Runtime:
         Ref: NodeVersion
       Timeout: 6
+Outputs:
+  HelloWorldLayer:
+    Description: This contains reusables used for this stack.
+    Value:
+      Ref: HelloWorldLayerVersion

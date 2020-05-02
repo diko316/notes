@@ -65,11 +65,10 @@ Resources:
     DependsOn:
     - IamRoleLambdaExecution
     - HelloWorldLambdaLogGroup
-    - HelloWorldLayerVersion
     Properties:
       Code:
         S3Bucket: cf-deploy-nested-stack
-        S3Key: 2020-05-01/f2dc91fa1e7f4b9f42e6dca620b86af5
+        S3Key: 37156a1a9a4d422fd865ba1d80e88c97/f2dc91fa1e7f4b9f42e6dca620b86af5
       FunctionName:
         Fn::Sub: ${AWS::StackName}-hello-world
       Handler: index.handler
@@ -78,8 +77,6 @@ Resources:
         Fn::GetAtt:
         - IamRoleLambdaExecution
         - Arn
-      Layers:
-      - Ref: HelloWorldLayerVersion
       Runtime:
         Ref: NodeVersion
       Timeout: 6

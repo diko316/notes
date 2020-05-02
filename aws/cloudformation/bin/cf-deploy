@@ -5,7 +5,7 @@ export AWS_PROFILE=diko
 # include
 . $(dirname $(realpath -m $0))/include/main
 
-WORKING_DIR=$(pwd)
+WORKING_DIR=${MAIN_STACK_DIR}
 
 OUTPUT_DIRECTORY=${WORKING_DIR}/dist
 DEPLOY_LOG_FILE=${OUTPUT_DIRECTORY}/build.log
@@ -16,25 +16,11 @@ set_log_file ${DEPLOY_LOG_FILE}
 
 report_topic "Deploying Cloudformation Stack: $(get_stack_name)"
 
-# cf_package_stack ${WORKING_DIR}
-
-error_fun() {
-  echo "failed"
-  return 1
-}
-
-piped_fun() {
-  echo "current code: $1"
-
-  return 0
-}
-
-
-error_fun || echo "end failed $?"
-
-TEST=$(error_fun) || echo "sulod"
-
-
+cd ${MAIN_STACK_DIR}
+{
+  cf_package_stack ${WORKING_DIR}
+  cf_deploy_stack ${WORKING_DIR}
+} 2>&1 | log_output
 
 
 

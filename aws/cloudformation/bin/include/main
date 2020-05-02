@@ -6,9 +6,6 @@
 ###############################################
 export TOOLS_DIR=$(dirname $(realpath -m $0))
 export TOOLS_INCLUDE=${TOOLS_DIR}/include
-export MAIN_STACK_NAME=$(basename $(pwd))
-export STACK_BUCKET_NAME=cf-deploy-${MAIN_STACK_NAME}
-export STACK_BUCKET_PREFIX=$(date '+%Y-%m-%d')
 
 # export CF_TEMPLATE_FILE=${WORKING_DIR}/cloudformation.yaml
 
@@ -24,6 +21,37 @@ export STACK_BUCKET_PREFIX=$(date '+%Y-%m-%d')
 ###############################################
 # Initialize
 ###############################################
+
+resolve_main_stack_cwd() {
+  local CURRENT_STACK_DIR=$(pwd)
+  local CURRENT_DIR=${CURRENT_STACK_DIR}
+  local RESOLVED_DIR
+  local TEMPLATE_FILE
+
+  while [ ${CURRENT_DIR} != "/" ]; do
+    [ -d ${CURRENT_DIR} ] || continue
+
+    # found template file
+    TEMPLATE_FILE=$(cf_template_file ${CURRENT_DIR})
+    if [ "[${TEMPLATE_FILE}]" != "[]" ]; then
+      RESOLVED_DIR=${CURRENT_DIR}
+
+    elif [ "$(basename ${CURRENT_DIR})" != "stack" ]; then
+      break
+    fi
+
+    CURRENT_DIR=$(dirname ${CURRENT_DIR})
+  done
+
+  echo "${RESOLVED_DIR}"
+
+  return 0
+}
+
+export MAIN_STACK_DIR=$(resolve_main_stack_cwd)
+export MAIN_STACK_NAME=$(basename ${MAIN_STACK_DIR})
+export STACK_BUCKET_NAME=cf-deploy-${MAIN_STACK_NAME}
+export STACK_BUCKET_PREFIX=$(cf_get_stack_dir_checksum ${MAIN_STACK_DIR})
 
 # report error
 # [ -f ${CF_TEMPLATE_FILE} ] || report_error 1 "No cloudformation template found."

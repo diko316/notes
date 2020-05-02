@@ -5,5 +5,21 @@
 * Deploying Cloudformation Stack: nested-stack
 *
 ************************************
-* 05/01/20 20:02:26
+* 05/03/20 00:38:39
 
+* There are no updates for stack nested-stack-nested1
+* There are no updates for stack nested-stack-nested1
+
+
+* There are no updates for stack nested-stack-nested2
+* There are no updates for stack nested-stack-nested2
+
+
+* There are no updates for stack nested-stack
+
+* There are no updates for stack nested-stack
+
+
+Waiting for changeset to be created..
+Waiting for stack create/update to complete
+Successfully created/updated stack - nested-stack
