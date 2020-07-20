@@ -8,7 +8,7 @@
     "aws-sdk": "^2.641.0"
   },
   "dependencies": {
-    "lodash": "^4.17.15",
+    "lodash": "^4.17.19",
     "@layer-example/package1": "file:layer/nodejs/package1",
     "@layer-example/package2": "file:layer/nodejs/package2",
     "@layer-example/package3": "file:layer/nodejs/package3"
