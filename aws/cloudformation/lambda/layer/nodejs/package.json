@@ -4,7 +4,7 @@
   "description": "Layer package: test-layer",
   "private": true,
   "dependencies": {
-    "lodash": "^4.17.15",
+    "lodash": "^4.17.19",
     "@layer-example/package1": "file:package1",
     "@layer-example/package2": "file:package2",
     "@layer-example/package3": "file:package3"
